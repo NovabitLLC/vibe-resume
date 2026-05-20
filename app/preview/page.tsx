@@ -1,18 +1,21 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Download, PencilLine } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, PencilLine } from "lucide-react";
 
 import { SiteNav } from "@/components/site/nav";
 import { SiteFooter } from "@/components/site/footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SitePreview } from "@/components/preview/site-preview";
 
 import { MOCK_RESUME, MOCK_WEBSITE_CONFIG } from "@/lib/mock-data";
 import type { CareerDirection, VisualStyle, WebsiteConfig } from "@/lib/types";
+import { loadResumeData } from "@/lib/storage";
+import type { ResumeData } from "@/lib/resumeSchema";
 
 export default function PreviewPage() {
   return (
@@ -28,9 +31,23 @@ export default function PreviewPage() {
 
 function PreviewBody() {
   const params = useSearchParams();
-  const direction = (params.get("direction") as CareerDirection | null) ?? MOCK_WEBSITE_CONFIG.direction;
+
+  const direction =
+    (params.get("direction") as CareerDirection | null) ?? MOCK_WEBSITE_CONFIG.direction;
   const style = (params.get("style") as VisualStyle | null) ?? MOCK_WEBSITE_CONFIG.style;
-  const isMock = params.get("mock") === "1" || !params.has("direction");
+
+  // Resume hydration is client-only — read once on mount.
+  const [resume, setResume] = useState<ResumeData | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setResume(loadResumeData());
+    setHydrated(true);
+  }, []);
+
+  // Mock fallback when no parsed resume is in storage.
+  const isMock = hydrated && resume == null;
+  const displayedResume = resume ?? MOCK_RESUME;
 
   const config = useMemo<WebsiteConfig>(
     () => ({ ...MOCK_WEBSITE_CONFIG, direction, style }),
@@ -52,12 +69,9 @@ function PreviewBody() {
               Your generated site
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {isMock
-                ? "This is a mock preview using sample data. In later phases this will show your actual resume."
-                : "Generated from your resume."}
-              <span className="mx-2">·</span>
-              direction <Badge variant="muted">{direction}</Badge>{" "}
-              <span className="mx-1">·</span> style <Badge variant="muted">{style}</Badge>
+              direction <Badge variant="muted">{direction}</Badge>
+              <span className="mx-1">·</span>
+              style <Badge variant="muted">{style}</Badge>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -72,23 +86,41 @@ function PreviewBody() {
           </div>
         </div>
 
-        <div className="mt-8 overflow-hidden rounded-2xl border bg-card shadow-xl">
+        {isMock && (
+          <Alert variant="warning" className="mt-6">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Showing sample data</AlertTitle>
+            <AlertDescription>
+              No parsed resume found in your browser. Head back to{" "}
+              <Link href="/upload" className="underline underline-offset-2">
+                upload
+              </Link>{" "}
+              to extract and structure your own PDF — the preview will swap in once it&apos;s
+              ready.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="mt-6 overflow-hidden rounded-2xl border bg-card shadow-xl">
           <div className="flex items-center gap-1.5 border-b bg-muted/40 px-4 py-2.5">
             <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
             <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/80" />
             <span className="h-2.5 w-2.5 rounded-full bg-green-400/80" />
             <span className="ml-3 truncate text-xs text-muted-foreground">
-              {MOCK_RESUME.basics.name.toLowerCase().replace(/\s+/g, "")}.viberesume.app
+              {(displayedResume.name || "you")
+                .toLowerCase()
+                .replace(/\s+/g, "")}
+              .viberesume.app
             </span>
           </div>
           <div className="bg-background">
-            <SitePreview resume={MOCK_RESUME} config={config} />
+            <SitePreview resume={displayedResume} config={config} />
           </div>
         </div>
 
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          Phase 1 preview · later phases will plug in PDF text extraction, AI JSON, and the real
-          template renderer.
+          Phase 3 preview · Phase 4 will generate a proper WebsiteConfig (theme + sections) instead
+          of using the default template.
         </p>
       </div>
     </main>

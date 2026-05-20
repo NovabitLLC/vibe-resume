@@ -4,10 +4,14 @@
  * Pipeline:
  *   PDF -> raw text -> ResumeData (structured) -> WebsiteConfig -> rendered template -> HTML export
  *
- * ResumeData is the canonical user-data shape.
- * WebsiteConfig is the canonical presentation shape (template + theme + layout choices).
- * Templates only ever read these two objects.
+ * ResumeData lives in lib/resumeSchema.ts (Zod-derived, every field defaulted).
+ * WebsiteConfig stays here — it's the canonical *presentation* shape consumed
+ * by templates.
  */
+
+import type { ResumeData } from "./resumeSchema";
+
+export type { ResumeData };
 
 // ---------- Career direction & style ----------
 
@@ -36,86 +40,9 @@ export type TemplateId =
   | "magazine"
   | "terminal";
 
-// ---------- Resume data (extracted by LLM) ----------
-
-export interface ResumeBasics {
-  name: string;
-  headline?: string;
-  email?: string;
-  phone?: string;
-  location?: string;
-  website?: string;
-  summary?: string;
-  /** Picked up from social links e.g. LinkedIn, GitHub, X. */
-  socials?: SocialLink[];
-}
-
-export interface SocialLink {
-  label: string;
-  url: string;
-  /** Optional icon hint, e.g. "github", "linkedin", "twitter". */
-  icon?: string;
-}
-
-export interface WorkExperience {
-  company: string;
-  role: string;
-  /** ISO-ish strings, e.g. "2021-04" or "2024-Present" — kept as strings since PDFs are messy. */
-  startDate?: string;
-  endDate?: string;
-  location?: string;
-  summary?: string;
-  highlights?: string[];
-}
-
-export interface EducationEntry {
-  institution: string;
-  degree?: string;
-  field?: string;
-  startDate?: string;
-  endDate?: string;
-  location?: string;
-  highlights?: string[];
-}
-
-export interface ProjectEntry {
-  name: string;
-  role?: string;
-  url?: string;
-  summary?: string;
-  highlights?: string[];
-  technologies?: string[];
-  /** Resolved at upload time — relative to /public or a data URL. */
-  imageId?: string;
-}
-
-export interface SkillGroup {
-  category: string;
-  items: string[];
-}
-
-export interface AwardEntry {
-  title: string;
-  issuer?: string;
-  date?: string;
-  summary?: string;
-}
-
-export interface ResumeData {
-  basics: ResumeBasics;
-  work: WorkExperience[];
-  education: EducationEntry[];
-  projects: ProjectEntry[];
-  skills: SkillGroup[];
-  awards?: AwardEntry[];
-  /** Extra free-form sections we couldn't classify; LLM may add these. */
-  extras?: { title: string; items: string[] }[];
-}
-
 // ---------- Website config (produced by LLM in phase 4) ----------
 
 export interface ThemeConfig {
-  /** Tailwind-friendly hex values. */
   primary: string;
   background: string;
   foreground: string;
@@ -129,11 +56,13 @@ export interface ThemeConfig {
 export type SectionId =
   | "hero"
   | "about"
-  | "work"
+  | "experience"
   | "projects"
   | "education"
   | "skills"
   | "awards"
+  | "certifications"
+  | "publications"
   | "contact";
 
 export interface SectionConfig {
@@ -160,7 +89,7 @@ export interface WebsiteConfig {
 export interface UploadedImage {
   id: string;
   name: string;
-  /** Data URL — stored client-side in phase 1; later we'll persist properly. */
+  /** Data URL — stored client-side; later we'll persist properly. */
   dataUrl: string;
 }
 

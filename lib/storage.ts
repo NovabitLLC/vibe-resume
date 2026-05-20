@@ -2,19 +2,19 @@
  * Tiny localStorage helpers. The pipeline accumulates data across pages
  * (PDF -> rawText -> ResumeData -> WebsiteConfig); we stash intermediate
  * results here so the user can navigate without losing work.
- *
- * Keys are namespaced under "viberesume:".
  */
 
 import type { CareerDirection, VisualStyle } from "./types";
+import { resumeSchema, type ResumeData } from "./resumeSchema";
 
 export const STORAGE_KEYS = {
   rawText: "viberesume:rawText",
   filename: "viberesume:filename",
   direction: "viberesume:direction",
   style: "viberesume:style",
+  /** Per Phase 3 spec — flat key for the parsed resume JSON. */
+  resume: "vibe-resume-data",
   // reserved for later phases:
-  resume: "viberesume:resume",
   website: "viberesume:website",
 } as const;
 
@@ -30,6 +30,8 @@ export interface ExtractionRecord {
 function isBrowser() {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
+
+// ---------- Extraction (Phase 2) ----------
 
 export function saveExtraction(rec: ExtractionRecord) {
   if (!isBrowser()) return;
@@ -64,6 +66,47 @@ export function clearExtraction() {
   try {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem("viberesume:extractedAt");
+    localStorage.removeItem("viberesume:resumeSavedAt");
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------- Parsed resume (Phase 3) ----------
+
+/** Save parsed ResumeData under the canonical "vibe-resume-data" key. */
+export function saveResumeData(resume: ResumeData) {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.resume, JSON.stringify(resume));
+    localStorage.setItem("viberesume:resumeSavedAt", new Date().toISOString());
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Load and validate parsed ResumeData from localStorage.
+ * Returns null if missing or malformed.
+ */
+export function loadResumeData(): ResumeData | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.resume);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const result = resumeSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearResumeData() {
+  if (!isBrowser()) return;
+  try {
+    localStorage.removeItem(STORAGE_KEYS.resume);
+    localStorage.removeItem("viberesume:resumeSavedAt");
   } catch {
     /* ignore */
   }

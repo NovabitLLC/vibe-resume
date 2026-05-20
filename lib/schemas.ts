@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Zod schemas mirroring lib/types.ts.
- * Used to validate LLM output in phases 3/4 so we can trust the JSON before rendering.
+ * Zod schemas for WebsiteConfig (presentation). The ResumeData schema
+ * lives in lib/resumeSchema.ts so the parse-resume route imports it cleanly.
  */
 
 export const careerDirectionSchema = z.enum([
@@ -33,77 +33,6 @@ export const templateIdSchema = z.enum([
   "terminal",
 ]);
 
-export const socialLinkSchema = z.object({
-  label: z.string(),
-  url: z.string(),
-  icon: z.string().optional(),
-});
-
-export const resumeBasicsSchema = z.object({
-  name: z.string(),
-  headline: z.string().optional(),
-  email: z.string().optional(),
-  phone: z.string().optional(),
-  location: z.string().optional(),
-  website: z.string().optional(),
-  summary: z.string().optional(),
-  socials: z.array(socialLinkSchema).optional(),
-});
-
-export const workExperienceSchema = z.object({
-  company: z.string(),
-  role: z.string(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  location: z.string().optional(),
-  summary: z.string().optional(),
-  highlights: z.array(z.string()).optional(),
-});
-
-export const educationEntrySchema = z.object({
-  institution: z.string(),
-  degree: z.string().optional(),
-  field: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  location: z.string().optional(),
-  highlights: z.array(z.string()).optional(),
-});
-
-export const projectEntrySchema = z.object({
-  name: z.string(),
-  role: z.string().optional(),
-  url: z.string().optional(),
-  summary: z.string().optional(),
-  highlights: z.array(z.string()).optional(),
-  technologies: z.array(z.string()).optional(),
-  imageId: z.string().optional(),
-});
-
-export const skillGroupSchema = z.object({
-  category: z.string(),
-  items: z.array(z.string()),
-});
-
-export const awardEntrySchema = z.object({
-  title: z.string(),
-  issuer: z.string().optional(),
-  date: z.string().optional(),
-  summary: z.string().optional(),
-});
-
-export const resumeDataSchema = z.object({
-  basics: resumeBasicsSchema,
-  work: z.array(workExperienceSchema).default([]),
-  education: z.array(educationEntrySchema).default([]),
-  projects: z.array(projectEntrySchema).default([]),
-  skills: z.array(skillGroupSchema).default([]),
-  awards: z.array(awardEntrySchema).optional(),
-  extras: z
-    .array(z.object({ title: z.string(), items: z.array(z.string()) }))
-    .optional(),
-});
-
 export const themeConfigSchema = z.object({
   primary: z.string(),
   background: z.string(),
@@ -118,11 +47,13 @@ export const themeConfigSchema = z.object({
 export const sectionIdSchema = z.enum([
   "hero",
   "about",
-  "work",
+  "experience",
   "projects",
   "education",
   "skills",
   "awards",
+  "certifications",
+  "publications",
   "contact",
 ]);
 
@@ -142,5 +73,4 @@ export const websiteConfigSchema = z.object({
   tagline: z.string().optional(),
 });
 
-export type ResumeDataParsed = z.infer<typeof resumeDataSchema>;
 export type WebsiteConfigParsed = z.infer<typeof websiteConfigSchema>;
