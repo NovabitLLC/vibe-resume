@@ -1,21 +1,26 @@
 /**
  * Tiny localStorage helpers. The pipeline accumulates data across pages
- * (PDF -> rawText -> ResumeData -> WebsiteConfig); we stash intermediate
+ * (PDF -> rawText -> ResumeData -> PageBlueprint); we stash intermediate
  * results here so the user can navigate without losing work.
  */
 
 import type { CareerDirection, VisualStyle } from "./types";
 import { resumeSchema, type ResumeData } from "./resumeSchema";
+import { pageBlueprintImageSchema, pageBlueprintSchema } from "./pageBlueprintSchema";
+import { careerDirectionSchema, visualStyleSchema } from "./schemas";
+import type { PageBlueprint, PageBlueprintImage } from "@/types/pageBlueprint";
 
 export const STORAGE_KEYS = {
   rawText: "viberesume:rawText",
   filename: "viberesume:filename",
   direction: "viberesume:direction",
   style: "viberesume:style",
-  /** Per Phase 3 spec — flat key for the parsed resume JSON. */
+  /** Canonical key for the parsed resume JSON (Phase 3). */
   resume: "vibe-resume-data",
-  // reserved for later phases:
-  website: "viberesume:website",
+  /** Canonical key for the generated page blueprint (Phase 4). */
+  blueprint: "vibe-resume-blueprint",
+  /** Uploaded images, including data URLs, used to resolve blueprint image refs. */
+  images: "vibe-resume-images",
 } as const;
 
 export interface ExtractionRecord {
@@ -42,7 +47,7 @@ export function saveExtraction(rec: ExtractionRecord) {
     localStorage.setItem(STORAGE_KEYS.style, rec.style);
     localStorage.setItem("viberesume:extractedAt", rec.extractedAt);
   } catch {
-    // localStorage quota / disabled — fine to ignore for now.
+    /* ignore */
   }
 }
 
@@ -51,11 +56,21 @@ export function loadExtraction(): ExtractionRecord | null {
   try {
     const text = localStorage.getItem(STORAGE_KEYS.rawText);
     const filename = localStorage.getItem(STORAGE_KEYS.filename);
-    const direction = localStorage.getItem(STORAGE_KEYS.direction) as CareerDirection | null;
-    const style = localStorage.getItem(STORAGE_KEYS.style) as VisualStyle | null;
+    const direction = localStorage.getItem(STORAGE_KEYS.direction);
+    const style = localStorage.getItem(STORAGE_KEYS.style);
     const extractedAt = localStorage.getItem("viberesume:extractedAt");
-    if (!text || !filename || !direction || !style || !extractedAt) return null;
-    return { text, filename, direction, style, extractedAt };
+    if (!text || !filename || !extractedAt) return null;
+    // Validate enums — slugs from older sessions may be out of date.
+    const dResult = careerDirectionSchema.safeParse(direction);
+    const sResult = visualStyleSchema.safeParse(style);
+    if (!dResult.success || !sResult.success) return null;
+    return {
+      text,
+      filename,
+      direction: dResult.data,
+      style: sResult.data,
+      extractedAt,
+    };
   } catch {
     return null;
   }
@@ -67,6 +82,8 @@ export function clearExtraction() {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem("viberesume:extractedAt");
     localStorage.removeItem("viberesume:resumeSavedAt");
+    localStorage.removeItem("viberesume:blueprintSavedAt");
+    localStorage.removeItem("viberesume:imagesSavedAt");
   } catch {
     /* ignore */
   }
@@ -74,7 +91,6 @@ export function clearExtraction() {
 
 // ---------- Parsed resume (Phase 3) ----------
 
-/** Save parsed ResumeData under the canonical "vibe-resume-data" key. */
 export function saveResumeData(resume: ResumeData) {
   if (!isBrowser()) return;
   try {
@@ -85,10 +101,6 @@ export function saveResumeData(resume: ResumeData) {
   }
 }
 
-/**
- * Load and validate parsed ResumeData from localStorage.
- * Returns null if missing or malformed.
- */
 export function loadResumeData(): ResumeData | null {
   if (!isBrowser()) return null;
   try {
@@ -107,6 +119,76 @@ export function clearResumeData() {
   try {
     localStorage.removeItem(STORAGE_KEYS.resume);
     localStorage.removeItem("viberesume:resumeSavedAt");
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------- Page blueprint (Phase 4) ----------
+
+export function savePageBlueprint(blueprint: PageBlueprint) {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.blueprint, JSON.stringify(blueprint));
+    localStorage.setItem("viberesume:blueprintSavedAt", new Date().toISOString());
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadPageBlueprint(): PageBlueprint | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.blueprint);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const result = pageBlueprintSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPageBlueprint() {
+  if (!isBrowser()) return;
+  try {
+    localStorage.removeItem(STORAGE_KEYS.blueprint);
+    localStorage.removeItem("viberesume:blueprintSavedAt");
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------- Uploaded images (Phase 4.5) ----------
+
+export function saveUploadedImages(images: PageBlueprintImage[]) {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.images, JSON.stringify(images));
+    localStorage.setItem("viberesume:imagesSavedAt", new Date().toISOString());
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadUploadedImages(): PageBlueprintImage[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.images);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const result = pageBlueprintImageSchema.array().safeParse(parsed);
+    return result.success ? result.data : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearUploadedImages() {
+  if (!isBrowser()) return;
+  try {
+    localStorage.removeItem(STORAGE_KEYS.images);
+    localStorage.removeItem("viberesume:imagesSavedAt");
   } catch {
     /* ignore */
   }

@@ -6,6 +6,8 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
+  Info,
+  LayoutDashboard,
   Loader2,
   RotateCcw,
   Sparkles,
@@ -33,25 +35,33 @@ import { ProfileImagePicker, ProjectImagePicker } from "@/components/upload/imag
 import { StylePicker } from "@/components/upload/style-picker";
 import { ExtractedTextPanel } from "@/components/upload/extracted-text-panel";
 import { ParsedResumePanel } from "@/components/upload/parsed-resume-panel";
+import { BlueprintPanel } from "@/components/upload/blueprint-panel";
 
 import { CAREER_DIRECTIONS } from "@/lib/constants";
 import type { CareerDirection, UploadFormState, VisualStyle } from "@/lib/types";
 import {
   clearExtraction,
+  clearPageBlueprint,
   clearResumeData,
+  clearUploadedImages,
   loadExtraction,
+  loadPageBlueprint,
   loadResumeData,
+  loadUploadedImages,
   saveExtraction,
+  savePageBlueprint,
   saveResumeData,
+  saveUploadedImages,
 } from "@/lib/storage";
 import type { ResumeData } from "@/lib/resumeSchema";
+import type { PageBlueprint, PageBlueprintImage } from "@/types/pageBlueprint";
 
 const DEFAULT_FORM: UploadFormState = {
   pdfFile: null,
   profileImage: null,
   projectImages: [],
   direction: "software-engineer",
-  style: "modern",
+  style: "modern-tech",
 };
 
 type ExtractStatus =
@@ -66,6 +76,18 @@ type ParseStatus =
   | { kind: "success"; resume: ResumeData; model?: string }
   | { kind: "error"; message: string };
 
+type BlueprintStatus =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | {
+      kind: "success";
+      blueprint: PageBlueprint;
+      fallbackUsed: boolean;
+      reason?: string;
+      model?: string;
+    }
+  | { kind: "error"; message: string };
+
 interface ExtractApiOk {
   text: string;
   filename: string;
@@ -74,7 +96,6 @@ interface ExtractApiOk {
 }
 interface ExtractApiErr {
   error: string;
-  code?: string;
 }
 
 interface ParseApiOk {
@@ -84,8 +105,17 @@ interface ParseApiOk {
 }
 interface ParseApiErr {
   error: string;
-  issues?: unknown[];
-  rawPreview?: string;
+}
+
+interface BlueprintApiOk {
+  blueprint: PageBlueprint;
+  fallbackUsed: boolean;
+  reason?: string;
+  model?: string;
+  provider?: string;
+}
+interface BlueprintApiErr {
+  error: string;
 }
 
 export default function UploadPage() {
@@ -93,8 +123,9 @@ export default function UploadPage() {
   const [form, setForm] = useState<UploadFormState>(DEFAULT_FORM);
   const [extract, setExtract] = useState<ExtractStatus>({ kind: "idle" });
   const [parse, setParse] = useState<ParseStatus>({ kind: "idle" });
+  const [bp, setBp] = useState<BlueprintStatus>({ kind: "idle" });
 
-  // Restore prior direction/style + cached extraction + parsed resume on load.
+  // Restore everything saved on first mount.
   useEffect(() => {
     const priorExtraction = loadExtraction();
     if (priorExtraction) {
@@ -111,8 +142,18 @@ export default function UploadPage() {
       });
     }
     const priorResume = loadResumeData();
-    if (priorResume) {
-      setParse({ kind: "success", resume: priorResume });
+    if (priorResume) setParse({ kind: "success", resume: priorResume });
+    const priorBlueprint = loadPageBlueprint();
+    if (priorBlueprint) {
+      setBp({ kind: "success", blueprint: priorBlueprint, fallbackUsed: false });
+    }
+    const priorImages = loadUploadedImages();
+    if (priorImages.length > 0) {
+      setForm((f) => ({
+        ...f,
+        profileImage: priorImages.find((img) => img.type === "avatar") ?? null,
+        projectImages: priorImages.filter((img) => img.type === "project"),
+      }));
     }
   }, []);
 
@@ -120,21 +161,37 @@ export default function UploadPage() {
     () => form.pdfFile != null && extract.kind !== "loading",
     [form.pdfFile, extract.kind]
   );
-
   const canStructure = useMemo(
     () => extract.kind === "success" && parse.kind !== "loading",
     [extract.kind, parse.kind]
   );
-
-  const canContinue = parse.kind === "success";
+  const canDesign = useMemo(
+    () => parse.kind === "success" && bp.kind !== "loading",
+    [parse.kind, bp.kind]
+  );
+  const canContinue = bp.kind === "success";
 
   function update<K extends keyof UploadFormState>(key: K, value: UploadFormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    // Picking a new file invalidates everything downstream.
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "profileImage" || key === "projectImages") {
+        saveUploadedImages(buildImagesFromForm(next));
+      }
+      return next;
+    });
     if (key === "pdfFile") {
       setExtract({ kind: "idle" });
       setParse({ kind: "idle" });
+      setBp({ kind: "idle" });
       clearResumeData();
+      clearPageBlueprint();
+    }
+    // Direction/style or image changes invalidate the blueprint.
+    if (key === "direction" || key === "style" || key === "profileImage" || key === "projectImages") {
+      if (bp.kind === "success") {
+        setBp({ kind: "idle" });
+        clearPageBlueprint();
+      }
     }
   }
 
@@ -142,6 +199,7 @@ export default function UploadPage() {
     if (!form.pdfFile) return;
     setExtract({ kind: "loading" });
     setParse({ kind: "idle" });
+    setBp({ kind: "idle" });
 
     try {
       const body = new FormData();
@@ -156,12 +214,7 @@ export default function UploadPage() {
       }
 
       const ok = json as ExtractApiOk;
-      setExtract({
-        kind: "success",
-        text: ok.text,
-        filename: ok.filename,
-        chars: ok.chars,
-      });
+      setExtract({ kind: "success", text: ok.text, filename: ok.filename, chars: ok.chars });
       saveExtraction({
         text: ok.text,
         filename: ok.filename,
@@ -180,6 +233,8 @@ export default function UploadPage() {
   async function handleStructure() {
     if (extract.kind !== "success") return;
     setParse({ kind: "loading" });
+    setBp({ kind: "idle" });
+    clearPageBlueprint();
 
     try {
       const res = await fetch("/api/parse-resume", {
@@ -206,21 +261,69 @@ export default function UploadPage() {
     }
   }
 
+  function buildImagesForApi(): PageBlueprintImage[] {
+    return buildImagesFromForm(form);
+  }
+
+  async function handleDesign() {
+    if (parse.kind !== "success") return;
+    setBp({ kind: "loading" });
+
+    try {
+      const res = await fetch("/api/generate-blueprint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resume: parse.resume,
+          careerDirection: form.direction,
+          visualStyle: form.style,
+          images: buildImagesForApi(),
+        }),
+      });
+      const json = (await res.json()) as BlueprintApiOk | BlueprintApiErr;
+
+      if (!res.ok || "error" in json) {
+        const message = "error" in json ? json.error : `Blueprint generation failed (HTTP ${res.status}).`;
+        setBp({ kind: "error", message });
+        return;
+      }
+
+      const ok = json as BlueprintApiOk;
+      setBp({
+        kind: "success",
+        blueprint: ok.blueprint,
+        fallbackUsed: ok.fallbackUsed,
+        reason: ok.reason,
+        model: ok.model,
+      });
+      savePageBlueprint(ok.blueprint);
+    } catch (err) {
+      setBp({
+        kind: "error",
+        message: err instanceof Error ? `Network error: ${err.message}` : "Network error.",
+      });
+    }
+  }
+
   function handleReset() {
     clearExtraction();
     clearResumeData();
+    clearPageBlueprint();
+    clearUploadedImages();
     setForm(DEFAULT_FORM);
     setExtract({ kind: "idle" });
     setParse({ kind: "idle" });
+    setBp({ kind: "idle" });
   }
 
   function handleContinue() {
-    if (parse.kind !== "success") return;
-    router.push(`/preview?direction=${form.direction}&style=${form.style}`);
+    if (bp.kind !== "success") return;
+    router.push("/preview");
   }
 
   const extracted = extract.kind === "success" ? extract : null;
   const parsed = parse.kind === "success" ? parse : null;
+  const blueprinted = bp.kind === "success" ? bp : null;
 
   return (
     <div className="min-h-screen flex flex-col vibe-backdrop">
@@ -236,8 +339,9 @@ export default function UploadPage() {
               Let&apos;s build your site.
             </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
-              Upload your resume PDF. We pull the text, then structure it into JSON with an LLM,
-              then render the preview.
+              Upload your resume PDF. We extract text, structure it with an LLM, then design a
+              modular Page Blueprint that drives the preview. The AI only picks from a fixed
+              component library — it never writes code.
             </p>
           </motion.div>
 
@@ -302,7 +406,7 @@ export default function UploadPage() {
                       </>
                     )}
                   </Button>
-                  {(extracted || parsed) && (
+                  {(extracted || parsed || blueprinted) && (
                     <Button variant="ghost" onClick={handleReset}>
                       Start over
                     </Button>
@@ -316,8 +420,8 @@ export default function UploadPage() {
               <CardHeader>
                 <CardTitle>2. Structure</CardTitle>
                 <CardDescription>
-                  We send the extracted text to an LLM and validate the response against a strict
-                  schema before saving.
+                  Send the extracted text to an LLM and validate the response against the
+                  ResumeData schema before saving.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -342,7 +446,7 @@ export default function UploadPage() {
                       <AlertTitle>Resume structured</AlertTitle>
                       <AlertDescription>
                         Parsed into ResumeData JSON
-                        {parsed.model ? ` (via ${parsed.model})` : ""}. Saved to your browser as{" "}
+                        {parsed.model ? ` (via ${parsed.model})` : ""}. Saved as{" "}
                         <code className="rounded bg-emerald-100 px-1 py-0.5 text-xs font-mono dark:bg-emerald-900/40">
                           vibe-resume-data
                         </code>
@@ -352,7 +456,7 @@ export default function UploadPage() {
                     <ParsedResumePanel
                       resume={parsed.resume}
                       source={parsed.model}
-                      defaultOpen
+                      defaultOpen={false}
                     />
                   </>
                 )}
@@ -390,6 +494,7 @@ export default function UploadPage() {
                 <CardTitle>3. Photos (optional)</CardTitle>
                 <CardDescription>
                   A profile photo for the hero, plus images for any projects you want to feature.
+                  These are passed as metadata to the blueprint designer.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -424,7 +529,7 @@ export default function UploadPage() {
               <CardHeader>
                 <CardTitle>4. Career direction</CardTitle>
                 <CardDescription>
-                  We&apos;ll lean wording and emphasis toward the role you&apos;re aiming at.
+                  Drives section ordering, component picks, and tone.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -457,7 +562,7 @@ export default function UploadPage() {
               <CardHeader>
                 <CardTitle>5. Visual style</CardTitle>
                 <CardDescription>
-                  Pick the vibe. You can still tweak typography and color on the next page.
+                  Drives theme (light/dark), backgroundStyle, fontStyle, and primary color.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -465,22 +570,110 @@ export default function UploadPage() {
               </CardContent>
             </Card>
 
+            {/* ---------- 6. Design website layout (Blueprint) ---------- */}
+            <Card>
+              <CardHeader>
+                <CardTitle>6. Design website layout</CardTitle>
+                <CardDescription>
+                  The LLM picks components from a fixed allow-list (no JSX, no HTML, no CSS) and
+                  produces a Page Blueprint. Always validated; falls back to a deterministic
+                  default if the LLM misbehaves.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!parsed && (
+                  <p className="text-sm text-muted-foreground">
+                    Structure a resume first — its JSON is the input to this step.
+                  </p>
+                )}
+
+                {bp.kind === "error" && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Couldn&apos;t generate a blueprint</AlertTitle>
+                    <AlertDescription>{bp.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                {blueprinted && (
+                  <>
+                    <Alert variant={blueprinted.fallbackUsed ? "warning" : "success"}>
+                      {blueprinted.fallbackUsed ? (
+                        <Info className="h-4 w-4" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      <AlertTitle>
+                        {blueprinted.fallbackUsed
+                          ? "Generated a fallback blueprint"
+                          : "Blueprint generated"}
+                      </AlertTitle>
+                      <AlertDescription>
+                        {blueprinted.blueprint.sections.length} sections ·{" "}
+                        {blueprinted.blueprint.highlightedSkills.length} highlighted skills ·{" "}
+                        {blueprinted.blueprint.imageUsage.length} image references.
+                        {blueprinted.fallbackUsed && blueprinted.reason
+                          ? ` Reason: ${blueprinted.reason}`
+                          : ""}
+                        {blueprinted.model && !blueprinted.fallbackUsed
+                          ? ` (via ${blueprinted.model})`
+                          : ""}
+                      </AlertDescription>
+                    </Alert>
+                    <BlueprintPanel
+                      blueprint={blueprinted.blueprint}
+                      source={blueprinted.model}
+                      fallback={blueprinted.fallbackUsed}
+                      defaultOpen
+                    />
+                  </>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={handleDesign}
+                    disabled={!canDesign}
+                    variant={blueprinted ? "outline" : "default"}
+                  >
+                    {bp.kind === "loading" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Designing your website layout…
+                      </>
+                    ) : blueprinted ? (
+                      <>
+                        <RotateCcw className="h-4 w-4" />
+                        Re-design
+                      </>
+                    ) : (
+                      <>
+                        <LayoutDashboard className="h-4 w-4" />
+                        Design website layout
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* ---------- Sticky action bar ---------- */}
             <div className="sticky bottom-4 z-30 mt-8 flex items-center justify-between gap-4 rounded-xl border bg-background/80 p-3 shadow-lg backdrop-blur sm:p-4">
               <div className="text-sm text-muted-foreground">
-                {parsed
-                  ? `Ready: ${parsed.resume.name || "resume"} structured.`
-                  : extracted
-                    ? "Click Structure resume to parse with the LLM."
-                    : form.pdfFile
-                      ? "Click Extract resume text to begin."
-                      : "Upload a PDF to begin."}
+                {blueprinted
+                  ? `Ready: ${blueprinted.blueprint.sections.length} sections designed.`
+                  : parsed
+                    ? "Click Design website layout to continue."
+                    : extracted
+                      ? "Structure your resume next."
+                      : form.pdfFile
+                        ? "Click Extract resume text to begin."
+                        : "Upload a PDF to begin."}
               </div>
               <Button
                 size="lg"
                 onClick={handleContinue}
                 disabled={!canContinue}
-                title={canContinue ? "Continue to preview" : "Structure your resume first"}
+                title={canContinue ? "Continue to preview" : "Design a blueprint first"}
               >
                 Continue to Preview
                 <ArrowRight className="h-4 w-4" />
@@ -492,4 +685,11 @@ export default function UploadPage() {
       <SiteFooter />
     </div>
   );
+}
+
+function buildImagesFromForm(form: UploadFormState): PageBlueprintImage[] {
+  return [
+    ...(form.profileImage ? [form.profileImage] : []),
+    ...form.projectImages,
+  ];
 }

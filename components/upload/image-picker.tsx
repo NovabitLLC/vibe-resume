@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import Image from "next/image";
 import { ImagePlus, X } from "lucide-react";
 import type { UploadedImage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -25,7 +24,12 @@ export function ProfileImagePicker({ value, onChange }: ProfileImagePickerProps)
     async (file: File | undefined) => {
       if (!file) return;
       const dataUrl = await readAsDataUrl(file);
-      onChange({ id: crypto.randomUUID(), name: file.name, dataUrl });
+      onChange({
+        id: crypto.randomUUID(),
+        type: "avatar",
+        url: dataUrl,
+        alt: "Profile photo",
+      });
     },
     [onChange]
   );
@@ -35,7 +39,7 @@ export function ProfileImagePicker({ value, onChange }: ProfileImagePickerProps)
       <div className="relative h-20 w-20 overflow-hidden rounded-full bg-muted">
         {value ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={value.dataUrl} alt="" className="h-full w-full object-cover" />
+          <img src={value.url} alt={value.alt ?? ""} className="h-full w-full object-cover" />
         ) : (
           <div className="grid h-full w-full place-items-center text-muted-foreground">
             <ImagePlus className="h-5 w-5" />
@@ -76,7 +80,13 @@ export function ProjectImagePicker({ value, onChange }: ProjectImagePickerProps)
       if (!files) return;
       const next: UploadedImage[] = [];
       for (const f of Array.from(files)) {
-        next.push({ id: crypto.randomUUID(), name: f.name, dataUrl: await readAsDataUrl(f) });
+        next.push({
+          id: crypto.randomUUID(),
+          type: "project",
+          url: await readAsDataUrl(f),
+          alt: "Project image",
+          relatedProject: "",
+        });
       }
       onChange([...value, ...next]);
     },
@@ -89,7 +99,7 @@ export function ProjectImagePicker({ value, onChange }: ProjectImagePickerProps)
         {value.map((img) => (
           <div key={img.id} className="group relative aspect-square overflow-hidden rounded-md border bg-muted">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
+            <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
             <button
               type="button"
               onClick={() => onChange(value.filter((v) => v.id !== img.id))}

@@ -1,9 +1,9 @@
 import type { ResumeData } from "./resumeSchema";
-import type { WebsiteConfig } from "./types";
+import type { PageBlueprint } from "@/types/pageBlueprint";
 
 /**
  * Sample data used as a fallback in the preview when no parsed resume
- * exists in localStorage. Matches the canonical ResumeData shape exactly.
+ * or generated blueprint exists in localStorage.
  */
 
 export const MOCK_RESUME: ResumeData = {
@@ -97,31 +97,53 @@ export const MOCK_RESUME: ResumeData = {
   publications: [],
 };
 
-export const MOCK_WEBSITE_CONFIG: WebsiteConfig = {
-  templateId: "split",
-  style: "modern",
-  direction: "software-engineer",
+export const MOCK_BLUEPRINT: PageBlueprint = {
+  version: "1.0",
+  careerDirection: "software-engineer",
+  visualStyle: "modern-tech",
   theme: {
-    primary: "#4f46e5",
-    background: "#ffffff",
-    foreground: "#0f172a",
-    accent: "#ec4899",
-    muted: "#f1f5f9",
-    fontHeading: "sans",
-    fontBody: "sans",
-    radius: "soft",
+    mode: "light",
+    primaryColor: "#2563eb",
+    accentColor: "#0f172a",
+    backgroundStyle: "subtle-gradient",
+    fontStyle: "modern",
+    spacing: "comfortable",
+    borderRadius: "large",
+  },
+  layout: {
+    pageType: "single-page",
+    maxWidth: "wide",
+    sectionSpacing: "comfortable",
+    navigation: "sticky",
   },
   sections: [
-    { id: "hero", title: "Hello", enabled: true },
-    { id: "about", title: "About", enabled: true },
-    { id: "experience", title: "Experience", enabled: true },
-    { id: "projects", title: "Projects", enabled: true },
-    { id: "skills", title: "Skills", enabled: true },
-    { id: "education", title: "Education", enabled: true },
-    { id: "awards", title: "Recognition", enabled: true },
-    { id: "certifications", title: "Certifications", enabled: true },
-    { id: "publications", title: "Publications", enabled: true },
-    { id: "contact", title: "Contact", enabled: true },
+    {
+      id: "hero",
+      component: "SplitHero",
+      enabled: true,
+      order: 1,
+      props: {
+        showAvatar: false,
+        avatarImageId: "",
+        avatarPosition: "right",
+        avatarSize: "large",
+        avatarShape: "circle",
+        showSocialLinks: true,
+        headlineStyle: "bold",
+        background: "gradient",
+      },
+    },
+    { id: "about", component: "AboutCard", enabled: true, order: 2, props: {} },
+    { id: "skills", component: "SkillBadgeCloud", enabled: true, order: 3, props: {} },
+    { id: "experience", component: "ExperienceTimeline", enabled: true, order: 4, props: {} },
+    { id: "projects", component: "ProjectCardGrid", enabled: true, order: 5, props: {} },
+    { id: "education", component: "EducationCards", enabled: true, order: 6, props: {} },
+    { id: "awards", component: "AwardList", enabled: true, order: 7, props: {} },
+    { id: "contact", component: "ContactCTA", enabled: true, order: 8, props: {} },
   ],
-  tagline: "I turn quiet complexity into obvious products.",
+  highlightedSkills: ["TypeScript", "React", "Next.js", "Python", "Go", "Design systems"],
+  featuredProjects: ["Quiet Garden", "Forecast Kit"],
+  stats: [],
+  imageUsage: [],
+  notes: "Mock blueprint used when no generated blueprint is in localStorage.",
 };
