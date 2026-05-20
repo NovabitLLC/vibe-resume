@@ -43,7 +43,7 @@ npm install --cache .npm-cache
 |---|---|
 | `/` | Landing page — hero, pipeline explainer, style gallery. |
 | `/upload` | End-to-end creation flow: PDF upload, optional image uploads, career direction/style choices, resume parsing, and PageBlueprint generation. |
-| `/preview` | Loads persisted `ResumeData`, `PageBlueprint`, and uploaded image metadata; renders the Phase 4 preview plus debug panels. |
+| `/preview` | Loads persisted `ResumeData`, `PageBlueprint`, and uploaded image metadata; renders the Phase 5 PageBlueprint Renderer plus debug panels. |
 | `/api/extract-pdf` | `POST` multipart/form-data → `{ text, filename, bytes, chars }`. |
 | `/api/parse-resume` | `POST` JSON `{ resumeText }` → validated `ResumeData`. |
 | `/api/generate-blueprint` | `POST` JSON `{ resume, careerDirection, visualStyle, images }` → validated `PageBlueprint`, with deterministic fallback. |
@@ -59,7 +59,30 @@ npm install --cache .npm-cache
 5. Pick a career direction and visual style.
 6. Click **Design website layout**. The app sends `resume`, `careerDirection`, `visualStyle`, and uploaded image metadata to `/api/generate-blueprint`.
 7. The blueprint route validates LLM output against `PageBlueprint`. If the model fails or returns invalid JSON, it returns a deterministic fallback blueprint.
-8. Continue to `/preview`. The preview loads persisted resume, blueprint, and image metadata, resolves avatar `imageUsage`, and passes the avatar URL into the hero renderer.
+8. Continue to `/preview`. The preview loads persisted resume, blueprint, and image metadata, then renders the website through the predefined ComponentRenderer registry.
+
+## PageBlueprint Renderer
+
+Phase 5 turns the blueprint contract into a real modular website renderer.
+
+- `ComponentRenderer` reads `blueprint.sections`, filters enabled sections, sorts by `order`, and renders each section through a registry lookup.
+- `componentRegistry` maps allowed blueprint component names to local React components. It never uses `eval`, model-generated JSX, raw HTML, or `dangerouslySetInnerHTML`.
+- Unknown components are skipped safely in production and shown as a small development fallback locally.
+- Section components hide themselves when their resume data is empty, so empty headings do not render.
+- Theme values are mapped through safe helpers in `components/renderer/theme.ts`; LLM values are never used as raw Tailwind classes.
+
+Implemented section families:
+
+| Family | Components |
+|---|---|
+| Hero | `SplitHero`, `CenteredHero`, `AvatarHero`, `MinimalHero`, `CreativeImageHero` |
+| About | `AboutCard`, `AboutSplit`, `SummaryBlock` |
+| Skills | `SkillBadgeCloud`, `GroupedSkills`, `TechStackGrid`, `SkillBarList` |
+| Experience | `ExperienceTimeline`, `ExperienceCards`, `CorporateExperienceList` |
+| Projects | `ProjectCardGrid`, `ProjectImageGallery`, `FeaturedProject`, `CompactProjectList` |
+| Education | `EducationCards`, `EducationTimeline`, `AcademicEducationBlock` |
+| Contact | `ContactCTA`, `ContactCard`, `MinimalContact` |
+| Supporting | certifications, awards, publications, stats |
 
 ## Browser Storage
 
@@ -75,7 +98,7 @@ The app intentionally uses `localStorage` while the product is in the early loca
 | `vibe-resume-blueprint` | Validated `PageBlueprint` JSON. |
 | `vibe-resume-images` | Uploaded image metadata, including data URLs, for preview-time image lookup. |
 
-`PageBlueprint.imageUsage` stores image references, not image bytes. Preview resolves `imageId` against `vibe-resume-images`.
+`PageBlueprint.imageUsage` stores image references, not image bytes. The renderer resolves `imageId` against `vibe-resume-images`.
 
 ## Image Flow
 
@@ -126,11 +149,14 @@ After LLM validation, the blueprint route deterministically adds missing avatar/
 4. Upload a profile photo and, optionally, one or more project images.
 5. Click **Design website layout**.
 6. Continue to `/preview`.
-7. Confirm the avatar renders instead of initials.
-8. Confirm the preview shows both debug panels:
-   - image registry from `vibe-resume-images`
-   - blueprint `imageUsage`
-9. Run `npm run typecheck` before committing.
+7. Confirm the status summary says `PageBlueprint Renderer`.
+8. Confirm resume content appears in the rendered website.
+9. Confirm sections follow the `order` values from the blueprint.
+10. Confirm the avatar renders instead of initials when an avatar is uploaded.
+11. Confirm project images render in project sections when project images are uploaded.
+12. Confirm the preview shows debug panels for resume JSON, PageBlueprint JSON, and image registry.
+13. Test a dark-mode blueprint and confirm tags/badges remain readable.
+14. Run `npm run typecheck` and `npm run build` before committing.
 
 ## Roadmap
 
@@ -139,7 +165,7 @@ After LLM validation, the blueprint route deterministically adds missing avatar/
 3. ✅ LLM resume JSON extraction
 4. ✅ PageBlueprint generation
 4.5. ✅ Image metadata persistence and avatar lookup
-5. ⏳ ComponentRenderer and modular section components
+5. ✅ ComponentRenderer and modular section components
 6. ⏳ Preview editor
 7. ⏳ Static HTML export
 8. ⏳ Polish, errors, responsive UI, cleanup
@@ -159,6 +185,8 @@ components/
   site/                 # nav + footer
   upload/               # upload-specific components
   preview/              # preview shell and debug panels
+  renderer/             # ComponentRenderer, registry, image/theme helpers
+  sections/             # predefined section components used by PageBlueprint
 lib/
   resumeSchema.ts       # canonical ResumeData schema
   pageBlueprintSchema.ts # PageBlueprint validation and fallback

@@ -1,0 +1,1 @@
+export { MinimalHero } from "./SplitHero";

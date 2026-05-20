@@ -1,0 +1,1 @@
+export { CenteredHero } from "./SplitHero";

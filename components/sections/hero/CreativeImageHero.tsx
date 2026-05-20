@@ -1,0 +1,1 @@
+export { CreativeImageHero } from "./SplitHero";

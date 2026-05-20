@@ -1,0 +1,1 @@
+export { MinimalContact } from "./ContactCTA";

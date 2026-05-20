@@ -1,0 +1,1 @@
+export { AvatarHero } from "./SplitHero";
