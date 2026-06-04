@@ -21,6 +21,9 @@ export const STORAGE_KEYS = {
   blueprint: "vibe-resume-blueprint",
   /** Uploaded images, including data URLs, used to resolve blueprint image refs. */
   images: "vibe-resume-images",
+  /** Original snapshot keys (Phase 6) — used by the editor's "Reset" buttons. */
+  originalResume: "vibe-resume-original-data",
+  originalBlueprint: "vibe-resume-original-blueprint",
 } as const;
 
 export interface ExtractionRecord {
@@ -192,4 +195,72 @@ export function clearUploadedImages() {
   } catch {
     /* ignore */
   }
+}
+
+// ---------- Original snapshots for Reset (Phase 6) ----------
+
+export function saveOriginalResumeData(resume: ResumeData) {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.originalResume, JSON.stringify(resume));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadOriginalResumeData(): ResumeData | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.originalResume);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const result = resumeSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveOriginalPageBlueprint(blueprint: PageBlueprint) {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.originalBlueprint, JSON.stringify(blueprint));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadOriginalPageBlueprint(): PageBlueprint | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.originalBlueprint);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const result = pageBlueprintSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Seed the original-backup keys from the *current* generated values, if no
+ * snapshot exists yet. Idempotent — only writes when the backup is missing.
+ * Returns true when a seed happened.
+ */
+export function seedOriginalsIfMissing(
+  resume: ResumeData | null,
+  blueprint: PageBlueprint | null
+): { resumeSeeded: boolean; blueprintSeeded: boolean } {
+  let resumeSeeded = false;
+  let blueprintSeeded = false;
+  if (resume && !loadOriginalResumeData()) {
+    saveOriginalResumeData(resume);
+    resumeSeeded = true;
+  }
+  if (blueprint && !loadOriginalPageBlueprint()) {
+    saveOriginalPageBlueprint(blueprint);
+    blueprintSeeded = true;
+  }
+  return { resumeSeeded, blueprintSeeded };
 }
