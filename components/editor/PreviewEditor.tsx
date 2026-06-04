@@ -40,6 +40,7 @@ import { LayoutEditor } from "./LayoutEditor";
 import { ThemeEditor } from "./ThemeEditor";
 import { ImageEditor } from "./ImageEditor";
 import { DebugEditor } from "./DebugEditor";
+import { ExportButton } from "./ExportButton";
 
 type TabKey = "content" | "layout" | "theme" | "images" | "debug";
 
@@ -147,6 +148,9 @@ export function PreviewEditor() {
         hydrated={hydrated}
         onResetContent={resetContent}
         onResetLayout={resetLayout}
+        resume={displayedResume}
+        blueprint={displayedBlueprint}
+        images={images}
       />
 
       <main className="flex-1">
@@ -239,11 +243,17 @@ function TopBar({
   hydrated,
   onResetContent,
   onResetLayout,
+  resume,
+  blueprint,
+  images,
 }: {
   savedAt: number | null;
   hydrated: boolean;
   onResetContent: () => void;
   onResetLayout: () => void;
+  resume: ResumeData;
+  blueprint: PageBlueprint;
+  images: PageBlueprintImage[];
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
@@ -261,12 +271,13 @@ function TopBar({
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={onResetContent}>
             <RotateCcw className="h-3.5 w-3.5" />
-            Reset content
+            <span className="hidden sm:inline">Reset content</span>
           </Button>
           <Button variant="outline" size="sm" onClick={onResetLayout}>
             <RotateCcw className="h-3.5 w-3.5" />
-            Reset layout
+            <span className="hidden sm:inline">Reset layout</span>
           </Button>
+          <ExportButton resume={resume} blueprint={blueprint} images={images} />
         </div>
       </div>
     </header>
